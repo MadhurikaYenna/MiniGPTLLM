@@ -1,5 +1,6 @@
 import os
 import re
+import pickle
 import streamlit as st
 import torch
 import torch.nn as nn
@@ -101,55 +102,72 @@ class MiniGPT(nn.Module):
         return logits, None
 
 # =====================================================================
-# CORE CACHED RESOURCE LIFECYCLE
+# RESOURCE LIFECYCLE MECHANICS (LOADING EXPORTED FILES)
 # =====================================================================
 @st.cache_resource
 def initialize_environment():
-    """Builds sample fallback vocabulary or loads pre-trained checkpoints safely"""
-    # Fallback basic text to extract standard vocabulary if no external configuration file is mapped
-    sample_corpus = "the dollar has hit its highest level against the euro in almost three months after the federal reserve head said the us trade deficit is set to stabilise. the government said quarterly profits at us media giant timewarner jumped."
-    words = re.findall(r"\w+|[^\w\s]", sample_corpus.lower(), re.UNICODE)
-    unique_tokens = sorted(list(set(words)))
-    vocabulary = ['<unk>'] + unique_tokens
-    
-    wtoi = {w: i for i, w in enumerate(vocabulary)}
-    itow = {i: w for i, w in enumerate(vocabulary)}
-    vocab_size = len(vocabulary)
-    
-    # Initialize architecture instance
+    """Loads exact saved vocabulary state and model weights dynamically"""
+    vocab_path = 'vocab.pkl'
+    model_path = 'model.pt'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
+    # 1. Read your authentic vocabulary metadata
+    if os.path.exists(vocab_path):
+        with open(vocab_path, 'rb') as f:
+            vocab_data = pickle.load(f)
+        wtoi = vocab_data['wtoi']
+        itow = vocab_data['itow']
+        vocab_size = vocab_data['vocab_size']
+    else:
+        st.error(f"❌ '{vocab_path}' not found! Please download it from Colab and drop it in this folder.")
+        st.stop()
+        
+    # 2. Instantiate Architecture Matching Your Dataset Array Boundaries
     model = MiniGPT(vocab_size=vocab_size)
     
-    # CRITICAL: If you exported weights (e.g. model.pt) from your training, uncomment below:
-    # if os.path.exists('model.pt'):
-    #     model.load_state_dict(torch.load('model.pt', map_location=device))
+    # 3. Inject Trained Neural Node Parameters
+    if os.path.exists(model_path):
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        st.sidebar.success("✅ Fully Loaded Trained Weights from 'model.pt'!")
+    else:
+        st.sidebar.warning("⚠️ 'model.pt' missing from directory. Running on randomized structural weights.")
         
     model.to(device)
     model.eval()
     
-    return model, wtoi, itow, device
+    return model, wtoi, itow, device, vocab_size
 
-model, wtoi, itow, device = initialize_environment()
+# Unpack cached application engine resources
+model, wtoi, itow, device, vocab_size = initialize_environment()
 
-# Tokenizer processing functions
+# =====================================================================
+# TOKENIZATION INTERFACES
+# =====================================================================
 def encode(text_string):
-    tokens = re.findall(r"\w+|[^\w\s]", text_string.lower(), re.UNICODE)
+    cleaned_string = text_string.lower()
+    tokens = re.findall(r"\w+|[^\w\s]", cleaned_string, re.UNICODE)
     return [wtoi[t] if t in wtoi else wtoi['<unk>'] for t in tokens]
 
 def decode(integer_list):
     words_list = [itow[idx] for idx in integer_list]
     text_output = " ".join(words_list)
-    return text_output.replace(" .", ".").replace(" ,", ",").replace(" ' ", "'").replace(" !", "!").replace(" ?", "?")
+    text_output = text_output.replace(" .", ".").replace(" ,", ",").replace(" ' ", "'")
+    return text_output.replace(" !", "!").replace(" ?", "?")
 
 # =====================================================================
 # USER INTERFACE RENDERING
 # =====================================================================
 st.title("🤖 BBC News Content Generator")
-st.markdown("This web app hosts your custom **Decoder-Only Mini-GPT** language model trained directly on news text hierarchies.")
+st.markdown("This web application hosts your custom **Decoder-Only Mini-GPT** language model trained directly on news text hierarchies.")
 
 st.sidebar.header("Generation Adjustments")
 max_tokens = st.sidebar.slider("Tokens to Generate", min_value=10, max_value=150, value=50, step=5)
 temperature = st.sidebar.slider("Creativity (Temperature)", min_value=0.2, max_value=1.5, value=1.0, step=0.1)
+
+# Application state diagnostic information panel
+st.sidebar.divider()
+st.sidebar.metric(label="Active Vocabulary Size", value=f"{vocab_size:,} words")
+st.sidebar.text(label=f"Hardware Device: {device.upper()}")
 
 # Main Text Input Field
 prompt = st.text_input("Enter a prompt to prime the model:", value="the government said")
@@ -160,11 +178,11 @@ if st.button("Generate Suggestions", type="primary"):
     else:
         with st.spinner("Autoregressively processing next token weights..."):
             try:
-                # Convert string token array to input tensor context matrix
+                # Convert input tokens using our uploaded map indexes
                 encoded_input = encode(prompt)
                 idx = torch.tensor([encoded_input], dtype=torch.long, device=device)
                 
-                # Autoregressive production loop execution
+                # Autoregressive generation loop execution
                 for _ in range(max_tokens):
                     idx_cond = idx[:, -BLOCK_SIZE:]
                     logits, _ = model(idx_cond)
@@ -173,7 +191,7 @@ if st.button("Generate Suggestions", type="primary"):
                     idx_next = torch.multinomial(probs, num_samples=1)
                     idx = torch.cat((idx, idx_next), dim=1)
                 
-                # De-tokenize back to client display
+                # Render clean decoded translation back to frontend layout
                 generated_text = decode(idx[0].tolist())
                 
                 st.subheader("📝 Model Output Suggestions")
