@@ -14,11 +14,7 @@ N_EMBD = 64
 N_HEAD = 4       
 N_LAYER = 4      
 
-st.set_page_config(
-    page_title="BBC News Mini-GPT Assistant",
-    page_icon="🤖",
-    layout="centered"
-)
+st.set_page_config(page_title="BBC News Mini-GPT Assistant", page_icon="🤖", layout="centered")
 
 # =====================================================================
 # TRANSFORMER ARCHITECTURE MODULES
@@ -167,7 +163,7 @@ temperature = st.sidebar.slider("Creativity (Temperature)", min_value=0.2, max_v
 # Application state diagnostic information panel
 st.sidebar.divider()
 st.sidebar.metric(label="Active Vocabulary Size", value=f"{vocab_size:,} words")
-st.sidebar.text(label=f"Hardware Device: {device.upper()}")
+st.sidebar.text(f"Hardware Device: {device.upper()}")
 
 # Main Text Input Field
 prompt = st.text_input("Enter a prompt to prime the model:", value="the government said")
